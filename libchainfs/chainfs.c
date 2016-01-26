@@ -28,8 +28,10 @@
 
 #include "inode.h"
 #include "chainfs.h"
+#include "dummyfs.h"
 
 static chainfs_mode_t g_chainfs_mode;
+char *mount_path;
 
 static void trace(const char *fn, const char *path)
 {
@@ -776,15 +778,23 @@ static struct fuse_operations chain_oper = {
 	.flag_nullpath_ok = 1,
 };
 
-int start_chainfs(chainfs_mode_t mode, char *mount_path)
+int start_chainfs(chainfs_mode_t mode, char *path)
 {
 	extern struct fuse_operations dummy_oper;
-	extern char *dummy_src;
-	char *argv[6];
+	char *argv[8];
+	char cmd[4096];
 	int ret = 0;
 
-	system("umount -l /var/lib/openstorage/chainfs");
-	system("mkdir -p /var/lib/openstorage/chainfs");
+	mount_path = strdup(path);
+	if (!mount_path) {
+		return -1;
+	}
+
+	snprintf(cmd, sizeof(cmd), "umount -l %s", mount_path);
+	system(cmd);
+
+	snprintf(cmd, sizeof(cmd), "mkdir -p %s", mount_path);
+	system(cmd);
 
 	init_layers();
 
@@ -795,24 +805,24 @@ int start_chainfs(chainfs_mode_t mode, char *mount_path)
 	argv[2] = "-f";
 	argv[3] = "-o";
 	argv[4] = "allow_other";
+	argv[5] = "-o";
+	argv[6] = "nonempty";
 
 	g_chainfs_mode = mode;
 
 	switch (mode)
 	{
 	case mode_chainfs:
-		ret = fuse_main(5, argv, &chain_oper, NULL);
+		ret = fuse_main(7, argv, &chain_oper, NULL);
 		break;
 
 	case mode_dummyfs:
-		dummy_src = strdup("/tmp/test");
-		if (!dummy_src) {
-			return -errno;
+		ret = init_dummy("/tmp/chainfs");
+		if (ret) {
+			goto done;
 		}
 
-		rmdir(dummy_src);
-		mkdir(dummy_src, 0644);
-		ret = fuse_main(5, argv, &dummy_oper, NULL);
+		ret = fuse_main(7, argv, &dummy_oper, NULL);
 		break;
 
 	default:
@@ -820,18 +830,21 @@ int start_chainfs(chainfs_mode_t mode, char *mount_path)
 		return -1;
 	}
 
+done:
 	return ret;
 }
 
 void stop_chainfs()
 {
-	system("umount /var/lib/openstorage/chainfs");
+	char cmd[4096];
+	snprintf(cmd, sizeof(cmd), "umount %s", mount_path);
+	system(cmd);
 }
 
 int alloc_chainfs(char *id)
 {
 	if (g_chainfs_mode == mode_dummyfs) {
-		return 0;
+		return alloc_dummyfs(id);
 	} else if (g_chainfs_mode == mode_chainfs) {
 		return set_upper(id);
 	} else {
@@ -844,7 +857,7 @@ int alloc_chainfs(char *id)
 int release_chainfs(char *id)
 {
 	if (g_chainfs_mode == mode_dummyfs) {
-		return 0;
+		return release_dummyfs(id);
 	} else if (g_chainfs_mode == mode_chainfs) {
 		return unset_upper(id);
 	} else {
@@ -860,17 +873,19 @@ int create_layer(char *id, char *parent_id)
 	int ret = 0;
 
 	if (g_chainfs_mode == mode_dummyfs) {
-		char dir[4096];
-
-		sprintf(dir, "/tmp/test/%s", id);
-		mkdir(dir, 0644);
-		fprintf(stderr, "Created layer %s\n", dir);
+		ret = create_dummy_layer(id, parent_id);
 	} else if (g_chainfs_mode == mode_chainfs) {
 		ret = create_inode_layer(id, parent_id);
 	} else {
 		fprintf(stderr, "Unknown chainFS mode.\n");
 		errno = EINVAL;
 		ret = -1;
+	}
+
+	if (!ret) {
+		fprintf(stderr, "Created layer %s\n", id);
+	} else {
+		perror("Error creating layer");
 	}
 
 	return ret;
@@ -881,17 +896,17 @@ int remove_layer(char *id)
 	int ret = 0;
 
 	if (g_chainfs_mode == mode_dummyfs) {
-		char dir[4096];
-
-		sprintf(dir, "/tmp/test/%s", id);
-		rmdir(dir);
-		fprintf(stderr, "Created layer %s\n", dir);
+		ret = remove_dummy_layer(id);
 	} else if (g_chainfs_mode == mode_chainfs) {
 		ret = remove_inode_layer(id);
 	} else {
 		fprintf(stderr, "Unknown chainFS mode.\n");
 		errno = EINVAL;
 		ret = -1;
+	}
+
+	if (!ret) {
+		fprintf(stderr, "Removed layer %s\n", id);
 	}
 
 	return ret;
@@ -903,13 +918,7 @@ int check_layer(char *id)
 	bool ret = false;
 
 	if (g_chainfs_mode == mode_dummyfs) {
-		extern char *dummy_src;
-		struct stat st;
-		char dir[4096];
-
-		sprintf(dir, "%s/%s", dummy_src, id);
-
-		ret = stat(dir, &st);
+		ret = check_dummy_layer(id);
 	} else if (g_chainfs_mode == mode_chainfs) {
 		ret = check_inode_layer(id);
 	} else {
