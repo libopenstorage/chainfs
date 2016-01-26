@@ -11,15 +11,8 @@ void *launch(void *arg)
 
 	if (!strcmp(mode, "chainfs")) {
 		start_chainfs(mode_chainfs, "/var/lib/openstorage/chainfs");
-
-		fprintf(stderr, "Creating layers...\n");
-
-		create_layer("layer1", NULL);
-		create_layer("layer2", "layer1");
 	} else if (!strcmp(mode, "dummyfs")) {
 		start_chainfs(mode_dummyfs, "/var/lib/openstorage/chainfs");
-	} else {
-		fprintf(stderr, "Unknown chainfs mode %s\n", mode);
 	}
 
 	return NULL;
@@ -28,6 +21,7 @@ void *launch(void *arg)
 int main(int argc, char **argv)
 {
 	pthread_t tid;
+	char *mode;
 	int c;
 
 	if (argc != 2) {
@@ -35,9 +29,29 @@ int main(int argc, char **argv)
 		return -1;
 	}
 
-	pthread_create(&tid, NULL, launch, argv[1]);
+	mode = (char *)argv[1];
 
-	sleep(2);
+	if (!strcmp(mode, "chainfs")) {
+		pthread_create(&tid, NULL, launch, mode);
+
+		sleep(2);
+
+		fprintf(stderr, "Creating layers...\n");
+
+		create_layer("layer1", NULL);
+		create_layer("layer2", "layer1");
+
+		fprintf(stderr, "Creating layers...\n");
+
+		create_layer("layer1", NULL);
+		create_layer("layer2", "layer1");
+	} else if (!strcmp(mode, "dummyfs")) {
+		pthread_create(&tid, NULL, launch, mode);
+	} else {
+		fprintf(stderr, "Unknown chainfs mode %s\n", mode);
+		return -1;
+	}
+
 	fprintf(stderr, "Ready... Press 'q' to exit.\n");
 
 	do {

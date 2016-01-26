@@ -110,7 +110,7 @@ static int dummy_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 	off_t nextoff = 0;
 	struct stat st;
 	char *rp = NULL;
-	DIR *dp;
+	DIR *dp = NULL;
 
 	rp = real_path(path, false);
 	if (!rp) {
@@ -150,6 +150,9 @@ static int dummy_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 	}
 
 done:
+	if (dp) {
+		closedir(dp);
+	}
 
 	if (rp) {
 		free_path(rp);

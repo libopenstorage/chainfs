@@ -32,6 +32,7 @@ static struct inode *root_inode;
 static struct layer *layer_head = NULL;
 static hashtable_t *layer_hash;
 static pthread_mutex_t layer_lock;
+static struct fuse_context *fuse_ctx;
 
 // Guards against a deleted inode getting free'd if we are about to 
 // ref count one of it's children.  TODO make this per layer and not global.
@@ -175,7 +176,6 @@ static struct inode *__alloc_inode(struct inode *parent, char *name,
 	mode_t mode, struct layer *layer)
 {
 	struct inode *inode = NULL;
-	struct fuse_context *fuse_ctx;
 	char *dupname = NULL;
 	char *base;
 	int ret = 0;
@@ -215,7 +215,6 @@ static struct inode *__alloc_inode(struct inode *parent, char *name,
 	}
 
 	inode->atime = inode->mtime = inode->ctime = time(NULL);
-	fuse_ctx = fuse_get_context();
 	inode->uid = fuse_ctx->uid;
 	inode->gid = fuse_ctx->gid;
 	inode->mode = mode;
@@ -1003,6 +1002,8 @@ int unset_upper(char *id)
 
 int init_layers()
 {
+	fuse_ctx = fuse_get_context();
+
 	layer_hash = ht_create(65536);
 	if (!layer_hash) {
 		return -1;
