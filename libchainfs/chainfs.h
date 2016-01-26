@@ -7,6 +7,13 @@ typedef enum
 	mode_dummyfs	// For testing baseline performance.
 } chainfs_mode_t;
 
+// Start ChainFS.  mode_dummyfs is used only for performance testing
+// and will not work as a functional chained FS.
+extern int start_chainfs(chainfs_mode_t mode, char *mount_path);
+
+// Exits ChainFS and releases all filesystem resources associated with ChainFS.
+extern void stop_chainfs(void);
+
 // Create a layer and link it to a parent.  Parent can be "" or NULL.
 extern int create_layer(char *id, char *parent_id);
 
@@ -21,12 +28,5 @@ extern int alloc_chainfs(char *id);
 
 // Release a chained FS.
 extern int release_chainfs(char *id);
-
-// Start ChainFS.  mode_dummyfs is used only for performance testing
-// and will not work as a functional chained FS.
-extern int start_chainfs(chainfs_mode_t mode, char *mount_path);
-
-// Exits ChainFS and releases all filesystem resources associated with ChainFS.
-extern void stop_chainfs(void);
 
 #endif // _CHAINFS_H_

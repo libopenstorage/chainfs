@@ -830,12 +830,28 @@ void stop_chainfs()
 
 int alloc_chainfs(char *id)
 {
-	return set_upper(id);
+	if (g_chainfs_mode == mode_dummyfs) {
+		return 0;
+	} else if (g_chainfs_mode == mode_chainfs) {
+		return set_upper(id);
+	} else {
+		fprintf(stderr, "Unknown chainFS mode.\n");
+		errno = EINVAL;
+		return -1;
+	}
 }
 
 int release_chainfs(char *id)
 {
-	return unset_upper(id);
+	if (g_chainfs_mode == mode_dummyfs) {
+		return 0;
+	} else if (g_chainfs_mode == mode_chainfs) {
+		return unset_upper(id);
+	} else {
+		fprintf(stderr, "Unknown chainFS mode.\n");
+		errno = EINVAL;
+		return -1;
+	}
 }
 
 // Create a layer and link it to a parent.  Parent can be "" or NULL.
