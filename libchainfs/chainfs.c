@@ -47,7 +47,7 @@ static char *upper_path(struct layer *upper, const char *path)
 	return new_path;
 }
 
-static int union_opendir(const char *path, struct fuse_file_info *fi)
+static int chain_opendir(const char *path, struct fuse_file_info *fi)
 {
 	int res = 0;
 	struct inode *inode = NULL;
@@ -76,7 +76,7 @@ done:
 
 // This does the bulk of unifying entries from the various layers.
 // It has to make sure dup entries are avoided.
-static int union_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
+static int chain_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 		off_t offset, struct fuse_file_info *fi)
 {
 	int res = 0;
@@ -171,12 +171,12 @@ done:
 	return res;
 }
 
-static int union_releasedir(const char *path, struct fuse_file_info *fi)
+static int chain_releasedir(const char *path, struct fuse_file_info *fi)
 {
 	return 0;
 }
 
-static int union_getattr(const char *path, struct stat *stbuf)
+static int chain_getattr(const char *path, struct stat *stbuf)
 {
 	int res = 0;
 	struct inode *inode = NULL;
@@ -200,7 +200,7 @@ done:
 	return res;
 }
 
-static int union_access(const char *path, int mask)
+static int chain_access(const char *path, int mask)
 {
 	int res = 0;
 	struct inode *inode = NULL;
@@ -223,7 +223,7 @@ done:
 	return res;
 }
 
-static int union_unlink(const char *path)
+static int chain_unlink(const char *path)
 {
 	int res = 0;
 	struct inode *inode = NULL;
@@ -247,7 +247,7 @@ done:
 	return res;
 }
 
-static int union_rmdir(const char *path)
+static int chain_rmdir(const char *path)
 {
 	int res = 0;
 	struct inode *inode = NULL;
@@ -277,7 +277,7 @@ done:
 	return res;
 }
 
-static int union_rename(const char *from, const char *to)
+static int chain_rename(const char *from, const char *to)
 {
 	int res = 0;
 	struct inode *inode = NULL;
@@ -304,7 +304,7 @@ done:
 	return res;
 }
 
-static int union_chmod(const char *path, mode_t mode)
+static int chain_chmod(const char *path, mode_t mode)
 {
 	int res = 0;
 	struct inode *inode = NULL;
@@ -327,7 +327,7 @@ done:
 	return res;
 }
 
-static int union_chown(const char *path, uid_t uid, gid_t gid)
+static int chain_chown(const char *path, uid_t uid, gid_t gid)
 {
 	int res = 0;
 	struct inode *inode = NULL;
@@ -350,7 +350,7 @@ done:
 	return res;
 }
 
-static int union_truncate(const char *path, off_t size)
+static int chain_truncate(const char *path, off_t size)
 {
 	int res = 0;
 	struct inode *inode = NULL;
@@ -379,7 +379,7 @@ done:
 	return res;
 }
 
-static int union_utimens(const char *path, const struct timespec ts[2])
+static int chain_utimens(const char *path, const struct timespec ts[2])
 {
 	int res = 0;
 	struct inode *inode = NULL;
@@ -402,7 +402,7 @@ done:
 	return res;
 }
 
-static int union_open(const char *path, struct fuse_file_info *fi)
+static int chain_open(const char *path, struct fuse_file_info *fi)
 {
 	int res = 0;
 	struct inode *inode = NULL;
@@ -424,7 +424,7 @@ done:
 	return res;
 }
 
-static int union_create(const char *path, mode_t mode, struct fuse_file_info *fi)
+static int chain_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 {
 	int res = 0;
 	struct inode *inode = NULL;
@@ -446,7 +446,7 @@ done:
 	return res;
 }
 
-static int union_mkdir(const char *path, mode_t mode)
+static int chain_mkdir(const char *path, mode_t mode)
 {
 	int res = 0;
 	struct inode *inode = NULL;
@@ -467,7 +467,7 @@ done:
 	return res;
 }
 
-static int union_mknod(const char *path, mode_t mode, dev_t rdev)
+static int chain_mknod(const char *path, mode_t mode, dev_t rdev)
 {
 	trace(__func__, path);
 
@@ -476,19 +476,19 @@ static int union_mknod(const char *path, mode_t mode, dev_t rdev)
 	return -EINVAL;
 }
 
-static int union_fgetattr(const char *path, struct stat *stbuf,
+static int chain_fgetattr(const char *path, struct stat *stbuf,
 		struct fuse_file_info *fi)
 {
-	return union_getattr(path, stbuf);
+	return chain_getattr(path, stbuf);
 }
 
-static int union_ftruncate(const char *path, off_t size,
+static int chain_ftruncate(const char *path, off_t size,
 	struct fuse_file_info *fi)
 {
-	return union_truncate(path, size);
+	return chain_truncate(path, size);
 }
 
-static int union_read(const char *path, char *buf, size_t size, off_t offset,
+static int chain_read(const char *path, char *buf, size_t size, off_t offset,
 		struct fuse_file_info *fi)
 {
 	int res = 0;
@@ -516,7 +516,7 @@ done:
 	return res;
 }
 
-static int union_write(const char *path, const char *buf, size_t size,
+static int chain_write(const char *path, const char *buf, size_t size,
 		off_t offset, struct fuse_file_info *fi)
 {
 	int res = 0;
@@ -544,7 +544,7 @@ done:
 	return res;
 }
 
-static int union_statfs(const char *path, struct statvfs *stbuf)
+static int chain_statfs(const char *path, struct statvfs *stbuf)
 {
 	int res = 0;
 
@@ -558,21 +558,21 @@ static int union_statfs(const char *path, struct statvfs *stbuf)
 	return res;
 }
 
-static int union_flush(const char *path, struct fuse_file_info *fi)
+static int chain_flush(const char *path, struct fuse_file_info *fi)
 {
 	(void) path;
 
 	return 0;
 }
 
-static int union_release(const char *path, struct fuse_file_info *fi)
+static int chain_release(const char *path, struct fuse_file_info *fi)
 {
 	(void) path;
 
 	return 0;
 }
 
-static int union_fsync(const char *path, int isdatasync,
+static int chain_fsync(const char *path, int isdatasync,
 		struct fuse_file_info *fi)
 {
 	int res = 0;
@@ -600,7 +600,7 @@ done:
 	return res;
 }
 
-static int union_readlink(const char *path, char *buf, size_t size)
+static int chain_readlink(const char *path, char *buf, size_t size)
 {
 	int res = 0;
 	struct inode *inode = NULL;
@@ -628,7 +628,7 @@ done:
 	return res;
 }
 
-static int union_symlink(const char *from, const char *to)
+static int chain_symlink(const char *from, const char *to)
 {
 	int res = 0;
 	struct inode *inode = NULL;
@@ -654,7 +654,7 @@ done:
 	return res;
 }
 
-static int union_link(const char *from, const char *to)
+static int chain_link(const char *from, const char *to)
 {
 	int res = 0;
 	struct inode *inode = NULL;
@@ -679,7 +679,7 @@ done:
 
 #ifdef HAVE_SETXATTR
 /* xattr operations are optional and can safely be left unimplemented */
-static int union_setxattr(const char *path, const char *name, const char *value,
+static int chain_setxattr(const char *path, const char *name, const char *value,
 		size_t size, int flags)
 {
 	// XXX TODO
@@ -687,7 +687,7 @@ static int union_setxattr(const char *path, const char *name, const char *value,
 	return -EINVAL;
 }
 
-static int union_getxattr(const char *path, const char *name, char *value,
+static int chain_getxattr(const char *path, const char *name, char *value,
 		size_t size)
 {
 	// XXX TODO
@@ -695,14 +695,14 @@ static int union_getxattr(const char *path, const char *name, char *value,
 	return -EINVAL;
 }
 
-static int union_listxattr(const char *path, char *list, size_t size)
+static int chain_listxattr(const char *path, char *list, size_t size)
 {
 	// XXX TODO
 	errno = EINVAL;
 	return -EINVAL;
 }
 
-static int union_removexattr(const char *path, const char *name)
+static int chain_removexattr(const char *path, const char *name)
 {
 	// XXX TODO
 	errno = EINVAL;
@@ -712,7 +712,7 @@ static int union_removexattr(const char *path, const char *name)
 
 #endif /* HAVE_SETXATTR */
 
-static int union_lock(const char *path, struct fuse_file_info *fi, int cmd,
+static int chain_lock(const char *path, struct fuse_file_info *fi, int cmd,
 		struct flock *lock)
 {
 	(void) path;
@@ -723,46 +723,46 @@ static int union_lock(const char *path, struct fuse_file_info *fi, int cmd,
 			sizeof(fi->lock_owner));
 }
 
-static struct fuse_operations union_oper = {
-	.getattr	= union_getattr,
-	.fgetattr	= union_fgetattr,
-	.access		= union_access,
-	.readlink	= union_readlink,
-	.opendir	= union_opendir,
-	.readdir	= union_readdir,
-	.releasedir	= union_releasedir,
-	.mknod		= union_mknod,
-	.mkdir		= union_mkdir,
-	.symlink	= union_symlink,
-	.unlink		= union_unlink,
-	.rmdir		= union_rmdir,
-	.rename		= union_rename,
-	.link		= union_link,
-	.chmod		= union_chmod,
-	.chown		= union_chown,
-	.truncate	= union_truncate,
-	.ftruncate	= union_ftruncate,
-	.utimens	= union_utimens,
-	.create		= union_create,
-	.open		= union_open,
-	.read		= union_read,
-	.write		= union_write,
-	.statfs		= union_statfs,
-	.flush		= union_flush,
-	.release	= union_release,
-	.fsync		= union_fsync,
+static struct fuse_operations chain_oper = {
+	.getattr	= chain_getattr,
+	.fgetattr	= chain_fgetattr,
+	.access		= chain_access,
+	.readlink	= chain_readlink,
+	.opendir	= chain_opendir,
+	.readdir	= chain_readdir,
+	.releasedir	= chain_releasedir,
+	.mknod		= chain_mknod,
+	.mkdir		= chain_mkdir,
+	.symlink	= chain_symlink,
+	.unlink		= chain_unlink,
+	.rmdir		= chain_rmdir,
+	.rename		= chain_rename,
+	.link		= chain_link,
+	.chmod		= chain_chmod,
+	.chown		= chain_chown,
+	.truncate	= chain_truncate,
+	.ftruncate	= chain_ftruncate,
+	.utimens	= chain_utimens,
+	.create		= chain_create,
+	.open		= chain_open,
+	.read		= chain_read,
+	.write		= chain_write,
+	.statfs		= chain_statfs,
+	.flush		= chain_flush,
+	.release	= chain_release,
+	.fsync		= chain_fsync,
 #ifdef HAVE_SETXATTR
-	.setxattr	= union_setxattr,
-	.getxattr	= union_getxattr,
-	.listxattr	= union_listxattr,
-	.removexattr= union_removexattr,
+	.setxattr	= chain_setxattr,
+	.getxattr	= chain_getxattr,
+	.listxattr	= chain_listxattr,
+	.removexattr= chain_removexattr,
 #endif
-	.lock		= union_lock,
+	.lock		= chain_lock,
 
 	.flag_nullpath_ok = 1,
 };
 
-int start_unionfs(char *mount_path)
+int start_chainfs(char *mount_path)
 {
 	char *argv[6];
 
@@ -770,28 +770,28 @@ int start_unionfs(char *mount_path)
 
 	umask(0);
 
-	argv[0] = "graph-unionfs";
+	argv[0] = "graph-chainfs";
 	argv[1] = mount_path;
 	argv[2] = "-f";
 	argv[3] = "-o";
 	argv[4] = "allow_other";
 
-	return fuse_main(5, argv, &union_oper, NULL);
+	return fuse_main(5, argv, &chain_oper, NULL);
 }
 
-int alloc_unionfs(char *id)
+int alloc_chainfs(char *id)
 {
 	return set_upper(id);
 }
 
-int release_unionfs(char *id)
+int release_chainfs(char *id)
 {
 	return unset_upper(id);
 }
 
 void *launch(void *arg)
 {
-	start_unionfs("/var/lib/openstorage/unionfs");
+	start_chainfs("/var/lib/openstorage/chainfs");
 
 	return NULL;
 }
@@ -801,7 +801,8 @@ int main()
 	pthread_t tid;
 	int c;
 
-	system("umount /var/lib/openstorage/unionfs");
+	system("umount -l /var/lib/openstorage/chainfs");
+	system("mkdir -p /var/lib/openstorage/chainfs");
 
 	pthread_create(&tid, NULL, launch, NULL);
 
@@ -818,7 +819,7 @@ int main()
 	} while (c != 'q');
 
 
-	system("umount /var/lib/openstorage/unionfs");
+	system("umount /var/lib/openstorage/chainfs");
 
 	return 0;
 }

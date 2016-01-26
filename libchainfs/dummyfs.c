@@ -34,184 +34,24 @@
 #define MAX_LAYERS 64
 #define MAX_INSTANCES 128
 
-struct union_fs {
-	char *layers[MAX_LAYERS];
-	pthread_mutex_t lock;
-	char id[256];
-	bool available;
-};
+static char *dummy_src;
 
-static char *union_src;
-static pthread_mutex_t ufs_lock;
-static struct union_fs ufs_instances[MAX_INSTANCES];
-static hashtable_t *ufs_hash;
-
-struct descriptor {
-	char name[PATH_MAX];
-	int fd;
-} descriptors[MAX_DESC];
-
-struct graph_dirp {
+struct dummy_dirp {
 	DIR *dp;
 	struct dirent *entry;
 	off_t offset;
 };
 
-static void lock_ufs(struct union_fs *ufs)
-{
-	pthread_mutex_lock(&ufs->lock);
-}
-
-static void unlock_ufs(struct union_fs *ufs)
-{
-	pthread_mutex_unlock(&ufs->lock);
-}
-
-static struct union_fs *get_ufs(const char *path, char **new_path)
-{
-	struct union_fs *ufs = NULL;
-	char *p, *tmp_path = NULL;
-
-	*new_path = NULL;
-
-	tmp_path = strdup(path + 1);
-	if (!tmp_path) {
-		fprintf(stderr, "Warning, cannot allocate memory.\n");
-		goto done;
-	}	
-	p = strchr(tmp_path, '/');
-	if (p) *p = 0;
-
-	ufs = ht_get(ufs_hash, tmp_path);
-	if (!ufs) {
-		goto done;
-	}
-
-	if (!ufs->available) {
-		*new_path = strchr(path+1, '/');
-		if (!*new_path) {
-			// Must be a request for root.
-			*new_path = "/";
-		}
-	} else {
-		ufs = NULL; 
-	}
-
-done:
-	if (tmp_path) {
-		free(tmp_path);
-	}
-
-	return ufs;
-}
-
-static void descriptors_init() {
-	int i;
-	for (i=0; i<MAX_DESC; ++i) {
-		descriptors[i].fd = -1;
-		descriptors[i].name[0] = 0;
-	}
-}
-
 static char *real_path(const char *path, bool create_mode)
 {
 	char *r = NULL;
-	char file[PATH_MAX];
-	char *dir;
-	struct union_fs *ufs = NULL;
-	char *fixed_path = NULL;
 
 	if (!strcmp(path, "/")) {
 		// This is a request for the root virtual path.  There are only
-		// union FS volumes at this location and no specific union FS context.
-		r = strdup(union_src);
-		goto done;
-	}
-
-	ufs = get_ufs(path, &fixed_path);
-	if (!ufs) {
-		asprintf(&r, "%s%s", union_src, path);
-		goto done;
-	}
-
-	lock_ufs(ufs);
-
-	strncpy(file, fixed_path, sizeof(file));
-	dir = dirname(file);
-
-	errno = 0;
-
-	if (ufs != NULL) {
-		int base_layer = -1;
-		int i;
-		int ret;
-		struct stat st;
-
-		fprintf(stderr, "WARNING - I should not be here %s\n", ufs->layers[0]);
-		for (i = 0; ufs->layers[i]; i++) {
-			fprintf(stderr, "BP3-2 %s\n", ufs->layers[i]);
-			asprintf(&r, "%s%s", ufs->layers[i], fixed_path);
-			if (!r) {
-				errno = ENOMEM;
-				fprintf(stderr, "Warning, cannot allocate memory\n");
-				goto done;
-			}
-
-			fprintf(stderr, "BP4 calling lstat on  %s\n", r);
-			ret = lstat(r, &st);
-			fprintf(stderr, "BP5 lstat returned  %d\n", ret);
-			if (ret == 0) {
-				// Found the file.
-				goto done;
-			}
-
-			// See if this layer contains the parent directory.  We give
-			// preference to the upper layers.
-			if (base_layer == -1) {
-				char *tmp_r;
-				asprintf(&tmp_r, "%s%s", ufs->layers[i], dir);
-				if (!r) {
-					errno = ENOMEM;
-					fprintf(stderr, "Warning, cannot allocate memory\n");
-					goto done;
-				}
-
-				ret = lstat(tmp_r, &st);
-				if (ret == 0) {
-					// This layer can be used to create the file.
-					base_layer = i;
-				}
-				free(tmp_r);
-			}
-
-			free(r);
-			r = NULL;
-		}
-
-		// If we did not find the file and create mode was requested, construct
-		// a file path in the appropriate layer.	
-		if (!r && create_mode && ufs->layers[0]) {
-			if (base_layer == -1) {
-				fprintf(stderr, "Warning, create mode requested on %s, "
-						"but no layer could be found that could create this file\n", fixed_path);
-				errno = ENOENT;
-			} else {
-				asprintf(&r, "%s%s", ufs->layers[base_layer], fixed_path);
-				if (!r) {
-					fprintf(stderr, "Warning, cannot allocate memory\n");
-					errno = ENOMEM;
-				}
-			}
-		}
+		// dummy FS volumes at this location and no specific dummy FS context.
+		r = strdup(dummy_src);
 	} else {
-		fprintf(stderr, "Warning, union FS not yet initialized.  Cannot access: %s\n", fixed_path);
-		errno = ENOENT;
-	}
-
-done:
-
-	if (ufs) {
-		unlock_ufs(ufs);
+		asprintf(&r, "%s%s", dummy_src, path);
 	}
 
 	return r;
@@ -222,66 +62,16 @@ static void free_path(char *path)
 	free(path);
 }
 
-static int maybe_open(const char* path, int flags, int mode) {
-	int fd = -1;
-	char *rp = NULL;
-
-	rp = real_path(path, (flags & O_CREAT ? true : false));
-	if (!rp) {
-		goto done;
-	}
-
-#if 0
-	fd = find_descriptor(rp);
-	if (fd != -1) {
-		goto done;
-	}
-#endif
-
-	int fixed_flags = (flags & (~O_WRONLY) & (~O_RDONLY)) | O_RDWR;
-
-	fd = open(rp, fixed_flags, mode);
-	if (fd==-1) {
-		fd = open(rp, flags, mode);
-	}
-
-	if (fd==-1) {
-		if (flags & O_CREAT) {
-			fprintf(stderr, "Warning, failed to create %s (errno=%d)\n", rp, errno);
-		}
-		goto done;
-	}
-
-#if 0
-	ret = register_fd(rp, fd);
-	if (ret==-1)  {
-		fprintf(stderr, "Warning, error while registering FD for %s.\n", rp);
-		close(fd);
-		fd = -1;
-		goto done;
-	}
-#endif
-
-done:
-	if (rp) {
-		free_path(rp);
-	}
-
-	return fd;
-}
-
-static int graph_opendir(const char *path, struct fuse_file_info *fi)
+static int dummy_opendir(const char *path, struct fuse_file_info *fi)
 {
 	int res = 0;
 	char *rp = NULL;
-	struct graph_dirp *d = malloc(sizeof(struct graph_dirp));
+	struct dummy_dirp *d = malloc(sizeof(struct dummy_dirp));
 
 	if (d == NULL) {
 		res = -ENOMEM;
 		goto done;
 	}
-
-	// fprintf(stderr, "Starting %s on %s\n", __func__, path);
 
 	rp = real_path(path, false);
 	if (!rp) {
@@ -305,125 +95,72 @@ done:
 		free_path(rp);
 	}
 
-	// fprintf(stderr, "Done  %s on %s\n", __func__, path);
 	return res;
 }
 
-static inline struct graph_dirp *get_dirp(struct fuse_file_info *fi)
+static inline struct dummy_dirp *get_dirp(struct fuse_file_info *fi)
 {
-	return (struct graph_dirp *) (uintptr_t) fi->fh;
+	return (struct dummy_dirp *) (uintptr_t) fi->fh;
 }
 
-static int graph_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
+static int dummy_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 		off_t offset, struct fuse_file_info *fi)
 {
 	int res = 0;
-	struct union_fs *ufs = NULL;
-	char *fixed_path = NULL;
 	off_t nextoff = 0;
 	struct stat st;
-	int i;
+	char *rp = NULL;
+	DIR *dp;
 
-	if (!strcmp(path, "/")) {
-		// List valid union FS paths.
-
-		// XXX do we need to lock here?
-		pthread_mutex_lock(&ufs_lock);
-		{
-			for (i = 0; i < MAX_INSTANCES; i++) {
-				if (!ufs_instances[i].available) {
-					char phys_path[PATH_MAX];
-					char d_name[8];
-
-					snprintf(phys_path, sizeof(phys_path), "%s/%s",
-						union_src, ufs_instances[i].id);
-					stat(phys_path, &st);
-
-					sprintf(d_name, "%s", ufs_instances[i].id);
-					if (filler(buf, d_name, &st, 0)) {
-						fprintf(stderr, "Warning, Filler too full on root.\n");
-						break;
-					}
-				}
-			}
-		}
-		pthread_mutex_unlock(&ufs_lock);
-
-		goto done;
-	}
-
-	ufs = get_ufs(path, &fixed_path);
-	if (!ufs) {
-		errno = ENOENT;
+	rp = real_path(path, false);
+	if (!rp) {
 		res = -errno;
-		// fprintf(stderr, "Warning, no valid union FS for %s\n", path);
 		goto done;
 	}
 
-	lock_ufs(ufs);
+	dp = opendir(rp);
+	if (!dp) {
+		fprintf(stderr, "Warning, cannot open %s as a directory.\n", rp);
+		goto done;
+	}
 
-	for (i = 0; ufs->layers[i]; i++) {
-		char *rp = NULL;
-		int ret;
-
-		asprintf(&rp, "%s%s", ufs->layers[i], fixed_path);
-		if (!rp) {
-			errno = ENOMEM;
-			fprintf(stderr, "Warning, cannot allocate memory\n");
+	while (true) {
+		struct dirent *entry = NULL;
+		entry = readdir(dp);
+		if (!entry) {
 			break;
 		}
 
-		ret = lstat(rp, &st);
-		if (ret == 0) {
-			DIR *dp;
-
-			dp = opendir(rp);
-			if (!dp) {
-				fprintf(stderr, "Warning, %s not a directory.\n", rp);
-				free(rp);
+		if (strcmp(".", entry->d_name) == 0 ||
+			strcmp("..", entry->d_name) == 0 || 
+			strcmp("_parent", entry->d_name) == 0) {
+				/* XXX TODO recurse into _parent */
 				continue;
-			}
-
-			while (true) {
-				struct dirent *entry = NULL;
-				entry = readdir(dp);
-				if (!entry) {
-					break;
-				}
-
-				if (strcmp(".", entry->d_name) == 0 ||
-					strcmp("..", entry->d_name) == 0 || 
-					strcmp("_parent", entry->d_name) == 0) {
-					continue;
-				}
-
-				memset(&st, 0, sizeof(st));
-				st.st_ino = entry->d_ino;
-				st.st_mode = entry->d_type << 12;
-
-				nextoff = 0;
-				if (filler(buf, entry->d_name, &st, nextoff)) {
-					fprintf(stderr, "Warning, Filler too full on %s.\n", rp);
-					break;
-				}
-			}
 		}
 
-		free(rp);
+		memset(&st, 0, sizeof(st));
+		st.st_ino = entry->d_ino;
+		st.st_mode = entry->d_type << 12;
+
+		nextoff = 0;
+		if (filler(buf, entry->d_name, &st, nextoff)) {
+			fprintf(stderr, "Warning, Filler too full on %s.\n", rp);
+			break;
+		}
 	}
 
 done:
 
-	if (ufs) {
-		unlock_ufs(ufs);
+	if (rp) {
+		free_path(rp);
 	}
 
 	return res;
 }
 
-static int graph_releasedir(const char *path, struct fuse_file_info *fi)
+static int dummy_releasedir(const char *path, struct fuse_file_info *fi)
 {
-	struct graph_dirp *d = get_dirp(fi);
+	struct dummy_dirp *d = get_dirp(fi);
 	(void) path;
 
 	closedir(d->dp);
@@ -432,20 +169,16 @@ static int graph_releasedir(const char *path, struct fuse_file_info *fi)
 	return 0;
 }
 
-static int graph_getattr(const char *path, struct stat *stbuf)
+static int dummy_getattr(const char *path, struct stat *stbuf)
 {
 	int res = 0;
 	char *rp = NULL;
-
-	// fprintf(stderr, "Start  %s on %s\n", __func__, path);
 
 	rp = real_path(path, false);
 	if (!rp) {
 		res = -errno;
 		goto done;
 	}
-
-	// fprintf(stderr, "Real Path = %s\n", rp);
 
 	res = lstat(rp, stbuf);
 	if (res == -1) {
@@ -457,16 +190,14 @@ done:
 	if (rp) {
 		free_path(rp);
 	}
-	// fprintf(stderr, "Finished  %s on %s\n", __func__, path);
 
 	return res;
 }
 
-static int graph_access(const char *path, int mask)
+static int dummy_access(const char *path, int mask)
 {
 	int res = 0;
 	char *rp = NULL;
-	// fprintf(stderr, "Start  %s on %s\n", __func__, path);
 
 	rp = real_path(path, false);
 	if (!rp) {
@@ -484,15 +215,14 @@ done:
 	if (rp) {
 		free_path(rp);
 	}
-	// fprintf(stderr, "Finished  %s on %s\n", __func__, path);
+
 	return res;
 }
 
-static int graph_readlink(const char *path, char *buf, size_t size)
+static int dummy_readlink(const char *path, char *buf, size_t size)
 {
 	int res = 0;
 	char *rp = NULL;
-	// fprintf(stderr, "Start  %s on %s\n", __func__, path);
 
 	rp = real_path(path, false);
 	if (!rp) {
@@ -512,15 +242,14 @@ done:
 	if (rp) {
 		free_path(rp);
 	}
-	// fprintf(stderr, "Finished  %s on %s\n", __func__, path);
+
 	return res;
 }
 
-static int graph_unlink(const char *path)
+static int dummy_unlink(const char *path)
 {
 	int res = 0;
 	char *rp = NULL;
-	//fprintf(stderr, "Start  %s on %s\n", __func__, path);
 
 	rp = real_path(path, false);
 	if (!rp) {
@@ -538,16 +267,14 @@ done:
 	if (rp) {
 		free_path(rp);
 	}
-	// fprintf(stderr, "Finished  %s on %s\n", __func__, path);
 
 	return res;
 }
 
-static int graph_rmdir(const char *path)
+static int dummy_rmdir(const char *path)
 {
 	int res = 0;
 	char *rp = NULL;
-	// fprintf(stderr, "Start  %s on %s\n", __func__, path);
 
 	rp = real_path(path, false);
 	if (!rp) {
@@ -565,16 +292,14 @@ done:
 	if (rp) {
 		free_path(rp);
 	}
-	// fprintf(stderr, "Finished  %s on %s\n", __func__, path);
 
 	return res;
 }
 
-static int graph_symlink(const char *path, const char *to)
+static int dummy_symlink(const char *path, const char *to)
 {
 	int res = 0;
 	char *rp = NULL;
-	// fprintf(stderr, "Start  %s on %s\n", __func__, path);
 
 	rp = real_path(to, true);
 	if (!rp) {
@@ -592,17 +317,15 @@ done:
 	if (rp) {
 		free_path(rp);
 	}
-	// fprintf(stderr, "Finished  %s on %s\n", __func__, path);
 
 	return res;
 }
 
-static int graph_rename(const char *path, const char *to)
+static int dummy_rename(const char *path, const char *to)
 {
 	int res = 0;
 	char *path_rp = NULL;
 	char *to_rp = NULL;
-	// fprintf(stderr, "Start  %s on %s\n", __func__, path);
 
 	path_rp = real_path(path, false);
 	if (!path_rp) {
@@ -630,17 +353,15 @@ done:
 	if (to_rp) {
 		free_path(to_rp);
 	}
-	// fprintf(stderr, "Finished  %s on %s\n", __func__, path);
 
 	return res;
 }
 
-static int graph_link(const char *path, const char *to)
+static int dummy_link(const char *path, const char *to)
 {
 	int res = 0;
 	char *path_rp = NULL;
 	char *to_rp = NULL;
-	// fprintf(stderr, "Start  %s on %s\n", __func__, path);
 
 	path_rp = real_path(path, false);
 	if (!path_rp) {
@@ -668,16 +389,14 @@ done:
 	if (to_rp) {
 		free_path(to_rp);
 	}
-	// fprintf(stderr, "Finished  %s on %s\n", __func__, path);
 
 	return res;
 }
 
-static int graph_chmod(const char *path, mode_t mode)
+static int dummy_chmod(const char *path, mode_t mode)
 {
 	int res = 0;
 	char *rp = NULL;
-	// fprintf(stderr, "Start  %s on %s\n", __func__, path);
 
 	rp = real_path(path, false);
 	if (!rp) {
@@ -695,16 +414,14 @@ done:
 	if (rp) {
 		free_path(rp);
 	}
-	// fprintf(stderr, "Finished  %s on %s\n", __func__, path);
 
 	return res;
 }
 
-static int graph_chown(const char *path, uid_t uid, gid_t gid)
+static int dummy_chown(const char *path, uid_t uid, gid_t gid)
 {
 	int res = 0;
 	char *rp = NULL;
-	// fprintf(stderr, "Start  %s on %s\n", __func__, path);
 
 	rp = real_path(path, false);
 	if (!rp) {
@@ -722,17 +439,22 @@ done:
 	if (rp) {
 		free_path(rp);
 	}
-	// fprintf(stderr, "Finished  %s on %s\n", __func__, path);
 
 	return res;
 }
 
-static int graph_truncate(const char *path, off_t size)
+static int dummy_truncate(const char *path, off_t size)
 {
 	int res = 0;
-	// fprintf(stderr, "Start  %s on %s\n", __func__, path);
+	char *rp = NULL;
 
-	int fd = maybe_open(path, O_RDWR, 0777);
+	rp = real_path(path, true);
+	if (!rp) {
+		res = -errno;
+		goto done;
+	}
+
+	int fd = open(rp, O_RDWR, 0777);
 	if (fd == -1) {
 		errno = ENOENT;
 		res = -ENOENT;
@@ -746,17 +468,18 @@ static int graph_truncate(const char *path, off_t size)
 	}
 
 done:
-	// fprintf(stderr, "Finished  %s on %s\n", __func__, path);
+	if (rp) {
+		free_path(rp);
+	}
 
 	return res;
 }
 
-static int graph_utimens(const char *path, const struct timespec ts[2])
+static int dummy_utimens(const char *path, const struct timespec ts[2])
 {
 	struct timeval tv[2];
 	int res = 0;
 	char *rp = NULL;
-	// fprintf(stderr, "Start  %s on %s\n", __func__, path);
 
 	rp = real_path(path, false);
 	if (!rp) {
@@ -781,56 +504,71 @@ done:
 	if (rp) {
 		free_path(rp);
 	}
-	// fprintf(stderr, "Finished  %s on %s\n", __func__, path);
 
 	return res;
 }
 
-static int graph_open(const char *path, struct fuse_file_info *fi)
-{
-	int res = 0;
-	int fd;
-	// fprintf(stderr, "Start  %s on %s\n", __func__, path);
-
-	fd = maybe_open(path, fi->flags, 0777);
-	if (fd == -1) {
-		res = -errno;
-		goto done;
-	}
-
-	fi->fh = fd;
-
-done:
-	// fprintf(stderr, "Finished  %s on %s\n", __func__, path);
-
-	return res;
-}
-
-static int graph_create(const char *path, mode_t mode, struct fuse_file_info *fi)
-{
-	int res = 0;
-	int fd;
-	// fprintf(stderr, "Start  %s on %s\n", __func__, path);
-
-	fd = maybe_open(path, fi->flags, mode);
-	if (fd == -1) {
-		res = -errno;
-		goto done;
-	}
-
-	fi->fh = fd;
-
-done:
-	// fprintf(stderr, "Finished  %s on %s\n", __func__, path);
-
-	return res;
-}
-
-static int graph_mkdir(const char *path, mode_t mode)
+static int dummy_open(const char *path, struct fuse_file_info *fi)
 {
 	int res = 0;
 	char *rp = NULL;
-	// fprintf(stderr, "Start  %s on %s\n", __func__, path);
+	int fd;
+
+	rp = real_path(path, true);
+	if (!rp) {
+		res = -errno;
+		goto done;
+	}
+
+	fd = open(rp, fi->flags, 0777);
+	if (fd == -1) {
+		res = -errno;
+		goto done;
+	}
+
+	fi->fh = fd;
+
+done:
+	if (rp) {
+		free_path(rp);
+	}
+
+
+	return res;
+}
+
+static int dummy_create(const char *path, mode_t mode, struct fuse_file_info *fi)
+{
+	int res = 0;
+	char *rp = NULL;
+	int fd;
+
+	rp = real_path(path, true);
+	if (!rp) {
+		res = -errno;
+		goto done;
+	}
+
+	fd = open(rp, fi->flags, mode);
+	if (fd == -1) {
+		res = -errno;
+		goto done;
+	}
+
+	fi->fh = fd;
+
+done:
+	if (rp) {
+		free_path(rp);
+	}
+
+	return res;
+}
+
+static int dummy_mkdir(const char *path, mode_t mode)
+{
+	int res = 0;
+	char *rp = NULL;
 
 	rp = real_path(path, true);
 	if (!rp) {
@@ -848,16 +586,14 @@ done:
 	if (rp) {
 		free_path(rp);
 	}
-	// fprintf(stderr, "Finished  %s on %s\n", __func__, path);
 
 	return res;
 }
 
-static int graph_mknod(const char *path, mode_t mode, dev_t rdev)
+static int dummy_mknod(const char *path, mode_t mode, dev_t rdev)
 {
 	int res = 0;
 	char *rp = NULL;
-	// fprintf(stderr, "Start  %s on %s\n", __func__, path);
 
 	rp = real_path(path, true);
 	if (!rp) {
@@ -880,44 +616,39 @@ done:
 	if (rp) {
 		free_path(rp);
 	}
-	// fprintf(stderr, "Finished  %s on %s\n", __func__, path);
 
 	return res;
 }
 
-static int graph_fgetattr(const char *path, struct stat *stbuf,
+static int dummy_fgetattr(const char *path, struct stat *stbuf,
 		struct fuse_file_info *fi)
 {
 	int res = 0;
 	(void) path;
-	// fprintf(stderr, "Start  %s on %s\n", __func__, path);
 
 	res = fstat(fi->fh, stbuf);
 	if (res == -1) {
 		return -errno;
 	}
-	// fprintf(stderr, "Finished  %s on %s\n", __func__, path);
 
 	return 0;
 }
 
-static int graph_ftruncate(const char *path, off_t size,
+static int dummy_ftruncate(const char *path, off_t size,
 		struct fuse_file_info *fi)
 {
 	int res;
 	(void) path;
-	// fprintf(stderr, "Start  %s on %s\n", __func__, path);
 
 	res = ftruncate(fi->fh, size);
 	if (res == -1) {
 		return -errno;
 	}
-	// fprintf(stderr, "Finished  %s on %s\n", __func__, path);
 
 	return 0;
 }
 
-static int graph_read(const char *path, char *buf, size_t size, off_t offset,
+static int dummy_read(const char *path, char *buf, size_t size, off_t offset,
 		struct fuse_file_info *fi)
 {
 	int res;
@@ -931,7 +662,7 @@ static int graph_read(const char *path, char *buf, size_t size, off_t offset,
 	return res;
 }
 
-static int graph_write(const char *path, const char *buf, size_t size,
+static int dummy_write(const char *path, const char *buf, size_t size,
 		off_t offset, struct fuse_file_info *fi)
 {
 	int res;
@@ -945,11 +676,11 @@ static int graph_write(const char *path, const char *buf, size_t size,
 	return res;
 }
 
-static int graph_statfs(const char *path, struct statvfs *stbuf)
+static int dummy_statfs(const char *path, struct statvfs *stbuf)
 {
 	int res = 0;
 
-	res = statvfs(union_src, stbuf);
+	res = statvfs(dummy_src, stbuf);
 	if (res == -1) {
 		res = -errno;
 	}
@@ -957,24 +688,23 @@ static int graph_statfs(const char *path, struct statvfs *stbuf)
 	return res;
 }
 
-static int graph_flush(const char *path, struct fuse_file_info *fi)
+static int dummy_flush(const char *path, struct fuse_file_info *fi)
 {
 	(void) path;
 
 	return 0;
 }
 
-static int graph_release(const char *path, struct fuse_file_info *fi)
+static int dummy_release(const char *path, struct fuse_file_info *fi)
 {
 	(void) path;
-	// intentionally omit closing fi->fh.
 
 	close(fi->fh);
 
 	return 0;
 }
 
-static int graph_fsync(const char *path, int isdatasync,
+static int dummy_fsync(const char *path, int isdatasync,
 		struct fuse_file_info *fi)
 {
 	int res;
@@ -996,7 +726,7 @@ static int graph_fsync(const char *path, int isdatasync,
 
 #ifdef HAVE_SETXATTR
 /* xattr operations are optional and can safely be left unimplemented */
-static int graph_setxattr(const char *path, const char *name, const char *value,
+static int dummy_setxattr(const char *path, const char *name, const char *value,
 		size_t size, int flags)
 {
 	int res = 0;
@@ -1023,7 +753,7 @@ done:
 	return res;
 }
 
-static int graph_getxattr(const char *path, const char *name, char *value,
+static int dummy_getxattr(const char *path, const char *name, char *value,
 		size_t size)
 {
 	int res = 0;
@@ -1049,7 +779,7 @@ done:
 	return res;
 }
 
-static int graph_listxattr(const char *path, char *list, size_t size)
+static int dummy_listxattr(const char *path, char *list, size_t size)
 {
 	int res = 0;
 	char *rp = NULL;
@@ -1074,7 +804,7 @@ done:
 	return res;
 }
 
-static int graph_removexattr(const char *path, const char *name)
+static int dummy_removexattr(const char *path, const char *name)
 {
 	int res = 0;
 	char *rp = NULL;
@@ -1102,7 +832,7 @@ done:
 
 #endif /* HAVE_SETXATTR */
 
-static int graph_lock(const char *path, struct fuse_file_info *fi, int cmd,
+static int dummy_lock(const char *path, struct fuse_file_info *fi, int cmd,
 		struct flock *lock)
 {
 	(void) path;
@@ -1111,169 +841,65 @@ static int graph_lock(const char *path, struct fuse_file_info *fi, int cmd,
 			sizeof(fi->lock_owner));
 }
 
-static struct fuse_operations graph_oper = {
-	.getattr	= graph_getattr,
-	.fgetattr	= graph_fgetattr,
-	.access		= graph_access,
-	.readlink	= graph_readlink,
-	.opendir	= graph_opendir,
-	.readdir	= graph_readdir,
-	.releasedir	= graph_releasedir,
-	.mknod		= graph_mknod,
-	.mkdir		= graph_mkdir,
-	.symlink	= graph_symlink,
-	.unlink		= graph_unlink,
-	.rmdir		= graph_rmdir,
-	.rename		= graph_rename,
-	.link		= graph_link,
-	.chmod		= graph_chmod,
-	.chown		= graph_chown,
-	.truncate	= graph_truncate,
-	.ftruncate	= graph_ftruncate,
-	.utimens	= graph_utimens,
-	.create		= graph_create,
-	.open		= graph_open,
-	.read		= graph_read,
-	.write		= graph_write,
-	.statfs		= graph_statfs,
-	.flush		= graph_flush,
-	.release	= graph_release,
-	.fsync		= graph_fsync,
+static struct fuse_operations dummy_oper = {
+	.getattr	= dummy_getattr,
+	.fgetattr	= dummy_fgetattr,
+	.access		= dummy_access,
+	.readlink	= dummy_readlink,
+	.opendir	= dummy_opendir,
+	.readdir	= dummy_readdir,
+	.releasedir	= dummy_releasedir,
+	.mknod		= dummy_mknod,
+	.mkdir		= dummy_mkdir,
+	.symlink	= dummy_symlink,
+	.unlink		= dummy_unlink,
+	.rmdir		= dummy_rmdir,
+	.rename		= dummy_rename,
+	.link		= dummy_link,
+	.chmod		= dummy_chmod,
+	.chown		= dummy_chown,
+	.truncate	= dummy_truncate,
+	.ftruncate	= dummy_ftruncate,
+	.utimens	= dummy_utimens,
+	.create		= dummy_create,
+	.open		= dummy_open,
+	.read		= dummy_read,
+	.write		= dummy_write,
+	.statfs		= dummy_statfs,
+	.flush		= dummy_flush,
+	.release	= dummy_release,
+	.fsync		= dummy_fsync,
 #ifdef HAVE_SETXATTR
-	.setxattr	= graph_setxattr,
-	.getxattr	= graph_getxattr,
-	.listxattr	= graph_listxattr,
-	.removexattr= graph_removexattr,
+	.setxattr	= dummy_setxattr,
+	.getxattr	= dummy_getxattr,
+	.listxattr	= dummy_listxattr,
+	.removexattr= dummy_removexattr,
 #endif
-	.lock		= graph_lock,
+	.lock		= dummy_lock,
 
 	.flag_nullpath_ok = 1,
 };
 
-int start_unionfs(char *mount_path)
+int start_dummyfs(char *mount_path)
 {
 	char *argv[4];
-	int i;
 
-	union_src = strdup("/tmp/test");
-	if (!union_src) {
+	dummy_src = strdup("/tmp/test");
+	if (!dummy_src) {
 		return -errno;
 	}
 
-	pthread_mutex_init(&ufs_lock, NULL);
+	rmdir(dummy_src);
+	mkdir(dummy_src, 0644);
 
-	for (i = 0; i < MAX_INSTANCES; i++) {
-		pthread_mutex_init(&ufs_instances[i].lock, NULL);
-
-		ufs_instances[i].available = true;
-	}
-
-	ufs_hash = ht_create( 65536 );
-
-	descriptors_init();
 	umask(0);
 
-	argv[0] = "graph";
+	argv[0] = "dummy";
 	argv[1] = mount_path;
 	argv[2] = "-f";
 
-	return fuse_main(3, argv, &graph_oper, NULL);
+	return fuse_main(3, argv, &dummy_oper, NULL);
 }
-
-int alloc_unionfs(char *layer_path, char *id)
-{
-	struct union_fs *ufs = NULL;
-	char link[PATH_MAX];
-	char *layer;
-	int res = 0;
-	int i;
-
-	pthread_mutex_lock(&ufs_lock);
-	{
-		for (i = 0; i < MAX_INSTANCES; i++) {
-			if (ufs_instances[i].available) {
-				ufs_instances[i].available = false;
-				ufs = &ufs_instances[i];
-				break;
-			}
-		}
-	}
-	pthread_mutex_unlock(&ufs_lock);
-
-	if (!ufs) {
-		errno = ENOMEM;
-		res = -errno;
-		printf("Warning, no more union FS instances available.\n");
-		goto done;
-	}
-
-	lock_ufs(ufs);
-
-	memset(ufs, 0, sizeof(struct union_fs));
-	strncpy(ufs->id, id, sizeof(ufs->id));
-	ht_set(ufs_hash, id, ufs);
-
-	for (i = 0, layer = layer_path; layer && (i < MAX_LAYERS); i++) {
-		char *parent = NULL;
-
-		ufs->layers[i] = strdup(layer);
-		if (!ufs->layers[i]) {
-			res = -errno;
-			goto done;
-		}
-
-		asprintf(&parent, "%s/_parent", layer);
-		if (!parent) {
-			res = -errno;
-			goto done;
-		}
-
-		memset(link, 0, sizeof(link));
-		res = readlink(parent, link, sizeof(link));
-		if (res != -1) {
-			layer = link;
-		} else {
-			res = 0;
-			layer = NULL;
-		}
-
-		free(parent);
-	}
-
-done:
-	if (res != 0) {
-		if (ufs) {
-			free(ufs);
-		}
-	} else {
-		errno = 0;
-	}
-
-	if (ufs) {
-		unlock_ufs(ufs);
-	}
-
-	return res;
-}
-
-int release_unionfs(char *id)
-{
-	int i;
-
-	pthread_mutex_lock(&ufs_lock);
-	{
-		for (i = 0; i < MAX_INSTANCES; i++) {
-			if (!ufs_instances[i].available && !strcmp(ufs_instances[i].id, id)) {
-				ufs_instances[i].available = true;
-				break;
-			}
-		}
-	}
-	pthread_mutex_unlock(&ufs_lock);
-
-	return 0;
-}
-
 
 int create_layer(char *id)
 {  
@@ -1289,7 +915,6 @@ int create_layer(char *id)
 
 int remove_layer(char *id)
 {   
-
     return 0;
 }  
 
@@ -1298,7 +923,7 @@ int check_layer(char *id)
     struct stat st;
     char dir[4096];
 
-    sprintf(dir, "/tmp/test/%s", id);
+    sprintf(dir, "%s/%s", dummy_src, id);
 
     int ret = stat(dir, &st);
 
@@ -1310,7 +935,7 @@ int main()
 	system("umount -l /var/lib/openstorage/chainfs");
 	system("mkdir -p /var/lib/openstorage/chainfs");
 
-	start_unionfs("/var/lib/openstorage/chainfs");
+	start_dummyfs("/var/lib/openstorage/chainfs");
    
 	return 0;
 }
