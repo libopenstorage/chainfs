@@ -865,7 +865,11 @@ int remove_layer(char *id)
 	int ret = 0;
 
 	if (g_chainfs_mode == mode_dummyfs) {
-		// noop
+		char dir[4096];
+
+		sprintf(dir, "/tmp/test/%s", id);
+		rmdir(dir);
+		fprintf(stderr, "Created layer %s\n", dir);
 	} else if (g_chainfs_mode == mode_chainfs) {
 		ret = remove_inode_layer(id);
 	} else {
@@ -890,7 +894,6 @@ int check_layer(char *id)
 		sprintf(dir, "%s/%s", dummy_src, id);
 
 		ret = stat(dir, &st);
-
 	} else if (g_chainfs_mode == mode_chainfs) {
 		ret = check_inode_layer(id);
 	} else {

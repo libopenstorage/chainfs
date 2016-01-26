@@ -3,7 +3,7 @@
 
 typedef enum
 {
-	mode_chainfs,
+	mode_chainfs = 0,
 	mode_dummyfs	// For testing baseline performance.
 } chainfs_mode_t;
 
