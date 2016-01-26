@@ -26,4 +26,7 @@ extern int release_chainfs(char *id);
 // and will not work as a functional chained FS.
 extern int start_chainfs(chainfs_mode_t mode, char *mount_path);
 
+// Exits ChainFS and releases all filesystem resources associated with ChainFS.
+extern void stop_chainfs(void);
+
 #endif // _CHAINFS_H_

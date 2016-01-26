@@ -809,9 +809,12 @@ int start_chainfs(chainfs_mode_t mode, char *mount_path)
 		return -1;
 	}
 
-	system("umount /var/lib/openstorage/chainfs");
-
 	return ret;
+}
+
+void stop_chainfs()
+{
+	system("umount /var/lib/openstorage/chainfs");
 }
 
 int alloc_chainfs(char *id)

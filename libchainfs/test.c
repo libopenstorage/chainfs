@@ -11,6 +11,11 @@ void *launch(void *arg)
 
 	if (!strcmp(mode, "chainfs")) {
 		start_chainfs(mode_chainfs, "/var/lib/openstorage/chainfs");
+
+		fprintf(stderr, "Creating layers...\n");
+
+		create_layer("layer1", NULL);
+		create_layer("layer2", "layer1");
 	} else if (!strcmp(mode, "dummyfs")) {
 		start_chainfs(mode_dummyfs, "/var/lib/openstorage/chainfs");
 	} else {
@@ -33,16 +38,13 @@ int main(int argc, char **argv)
 	pthread_create(&tid, NULL, launch, argv[1]);
 
 	sleep(2);
-
-	fprintf(stderr, "Creating layers...\n");
-
-	create_layer("layer1", NULL);
-	create_layer("layer2", "layer1");
-
 	fprintf(stderr, "Ready... Press 'q' to exit.\n");
+
 	do {
 		c = getchar();
 	} while (c != 'q');
+
+	stop_chainfs();
 
 	return 0;
 }
