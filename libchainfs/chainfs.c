@@ -300,7 +300,6 @@ static int chain_rename(const char *from, const char *to)
 		goto done;
 	}
 
-	deref_inode(inode);
 	if (delete_inode(inode)) {
 		res = -errno;
 		goto done;
