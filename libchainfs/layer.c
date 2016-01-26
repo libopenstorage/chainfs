@@ -23,7 +23,7 @@
 #include "hash.h"
 #include "layer.h"
 
-#define _USE_SNAPPY_
+// #define _USE_SNAPPY_
 
 // A reference to the root inode.
 static struct inode *root_inode;
@@ -739,7 +739,7 @@ struct inode *rename_inode(struct inode *inode, const char *to)
 	}
 
 	// Just make the new node a link to the previous node.
-	// XXX FIXME this needs to be done better.
+	// XXX FIXME this needs to be done betterm without hardlinks.
 	new_inode->link = inode;
 	pthread_mutex_lock(&inode->lock);
 	{

@@ -284,6 +284,7 @@ static int chain_rename(const char *from, const char *to)
 {
 	int res = 0;
 	struct inode *inode = NULL;
+	struct inode *new_inode = NULL;
 
 	trace(__func__, from);
 
@@ -293,15 +294,26 @@ static int chain_rename(const char *from, const char *to)
 		goto done;
 	}
 
-	inode = rename_inode(inode, to);
-	if (!inode) {
+	new_inode = rename_inode(inode, to);
+	if (!new_inode) {
 		res = -errno;
 		goto done;
 	}
 
+	deref_inode(inode);
+	if (delete_inode(inode)) {
+		res = -errno;
+		goto done;
+	}
+	inode = NULL;
+
 done:
 	if (inode) {
 		deref_inode(inode);
+	}
+
+	if (new_inode) {
+		deref_inode(new_inode);
 	}
 
 	return res;
