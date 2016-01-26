@@ -1,6 +1,12 @@
 # chainfs
 Implements a chained filesystem in userspace.  Uses FUSE to export the chained namespace.
 
+### EXPERIMENTAL!  
+Note that this is still in development and experimental.  Currently the following are known issues
+
+1. Data modified on shared layers are not snap'd and therefore visible in other containers.
+2. There are two heavy weight locks around accessing the `layer` data structures which can be avoided.
+
 # Building chainfs
 
 ```
