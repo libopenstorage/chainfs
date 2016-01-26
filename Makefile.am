@@ -3,7 +3,7 @@ AM_CFLAGS = -Wall -Werror -Ilibchainfs
 TIMEOUT_KILL = timeout --foreground -s 6 1h
 TIMEOUT_SHORT = timeout --foreground -s 6 1m
 
-noinst_LIBRARIES=\
+lib_LIBRARIES=\
 	lib/libchainfs.a
 
 bin_PROGRAMS=\
