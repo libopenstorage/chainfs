@@ -26,7 +26,7 @@
 #include <sys/xattr.h>
 #endif
 
-#include "layer.h"
+#include "inode.h"
 #include "chainfs.h"
 
 static chainfs_mode_t g_chainfs_mode;

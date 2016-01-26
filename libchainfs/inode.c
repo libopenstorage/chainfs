@@ -21,7 +21,7 @@
 
 #include "snappy.h"
 #include "hash.h"
-#include "layer.h"
+#include "inode.h"
 
 // #define _USE_SNAPPY_
 

@@ -13,9 +13,9 @@ bin_PROGRAMS=\
 lib_libchainfs_a_SOURCES= \
 	libchainfs/chainfs.c\
 	libchainfs/dummyfs.c\
+	libchainfs/inode.c\
 	libchainfs/hash.c\
-	libchainfs/snappy.c\
-	libchainfs/layer.c
+	libchainfs/snappy.c
 
 bin_test_SOURCES = \
 	libchainfs/test.c

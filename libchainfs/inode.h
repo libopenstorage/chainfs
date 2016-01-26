@@ -1,5 +1,5 @@
-#ifndef _LAYER_H_
-#define _LAYER_H_
+#ifndef _INODE_H_
+#define _INODE_H_
 #define _FILE_OFFSET_BITS 64
 
 #include <fuse.h>
@@ -154,5 +154,5 @@ extern int root_fill(fuse_fill_dir_t filler, char *buf);
 // Initialize the layer file system.
 extern int init_layers(void);
 
-#endif // _LAYER_H_
+#endif // _INODE_H_
 
