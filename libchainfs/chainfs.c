@@ -27,6 +27,9 @@
 #endif
 
 #include "layer.h"
+#include "chainfs.h"
+
+static chainfs_mode_t g_chainfs_mode;
 
 static void trace(const char *fn, const char *path)
 {
@@ -762,9 +765,15 @@ static struct fuse_operations chain_oper = {
 	.flag_nullpath_ok = 1,
 };
 
-int start_chainfs(char *mount_path)
+int start_chainfs(chainfs_mode_t mode, char *mount_path)
 {
+	extern struct fuse_operations dummy_oper;
+	extern char *dummy_src;
 	char *argv[6];
+	int ret = 0;
+
+	system("umount -l /var/lib/openstorage/chainfs");
+	system("mkdir -p /var/lib/openstorage/chainfs");
 
 	init_layers();
 
@@ -776,7 +785,33 @@ int start_chainfs(char *mount_path)
 	argv[3] = "-o";
 	argv[4] = "allow_other";
 
-	return fuse_main(5, argv, &chain_oper, NULL);
+	g_chainfs_mode = mode;
+
+	switch (mode)
+	{
+	case mode_chainfs:
+		ret = fuse_main(5, argv, &chain_oper, NULL);
+		break;
+
+	case mode_dummyfs:
+		dummy_src = strdup("/tmp/test");
+		if (!dummy_src) {
+			return -errno;
+		}
+
+		rmdir(dummy_src);
+		mkdir(dummy_src, 0644);
+		ret = fuse_main(5, argv, &dummy_oper, NULL);
+		break;
+
+	default:
+		errno = EINVAL;
+		return -1;
+	}
+
+	system("umount /var/lib/openstorage/chainfs");
+
+	return ret;
 }
 
 int alloc_chainfs(char *id)
@@ -789,37 +824,66 @@ int release_chainfs(char *id)
 	return unset_upper(id);
 }
 
-void *launch(void *arg)
+// Create a layer and link it to a parent.  Parent can be "" or NULL.
+int create_layer(char *id, char *parent_id)
 {
-	start_chainfs("/var/lib/openstorage/chainfs");
+	int ret = 0;
 
-	return NULL;
+	if (g_chainfs_mode == mode_dummyfs) {
+		char dir[4096];
+
+		sprintf(dir, "/tmp/test/%s", id);
+		mkdir(dir, 0644);
+		fprintf(stderr, "Created layer %s\n", dir);
+	} else if (g_chainfs_mode == mode_chainfs) {
+		ret = create_inode_layer(id, parent_id);
+	} else {
+		fprintf(stderr, "Unknown chainFS mode.\n");
+		errno = EINVAL;
+		ret = -1;
+	}
+
+	return ret;
 }
 
-int main()
+int remove_layer(char *id)
 {
-	pthread_t tid;
-	int c;
+	int ret = 0;
 
-	system("umount -l /var/lib/openstorage/chainfs");
-	system("mkdir -p /var/lib/openstorage/chainfs");
+	if (g_chainfs_mode == mode_dummyfs) {
+		// noop
+	} else if (g_chainfs_mode == mode_chainfs) {
+		ret = remove_inode_layer(id);
+	} else {
+		fprintf(stderr, "Unknown chainFS mode.\n");
+		errno = EINVAL;
+		ret = -1;
+	}
 
-	pthread_create(&tid, NULL, launch, NULL);
+	return ret;
+}
 
-	sleep(2);
+// Returns true if layer exists.
+int check_layer(char *id)
+{
+	bool ret = false;
 
-	fprintf(stderr, "Creating layers...\n");
+	if (g_chainfs_mode == mode_dummyfs) {
+		extern char *dummy_src;
+		struct stat st;
+		char dir[4096];
 
-	create_layer("layer1", NULL);
-	create_layer("layer2", "layer1");
+		sprintf(dir, "%s/%s", dummy_src, id);
 
-	fprintf(stderr, "Ready... Press 'q' to exit.\n");
-	do {
-		c = getchar();
-	} while (c != 'q');
+		ret = stat(dir, &st);
 
+	} else if (g_chainfs_mode == mode_chainfs) {
+		ret = check_inode_layer(id);
+	} else {
+		fprintf(stderr, "Unknown chainFS mode.\n");
+		errno = EINVAL;
+		ret = -1;
+	}
 
-	system("umount /var/lib/openstorage/chainfs");
-
-	return 0;
+	return ret;
 }

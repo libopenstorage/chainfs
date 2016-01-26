@@ -85,13 +85,13 @@ typedef enum {
 } ref_mode_t;
 
 // Create a layer and link it to a parent.  Parent can be "" or NULL.
-extern int create_layer(char *id, char *parent_id);
+extern int create_inode_layer(char *id, char *parent_id);
 
 // Remove a layer and all the inodes in this layer.
-extern int remove_layer(char *id);
+extern int remove_inode_layer(char *id);
 
 // Returns true if layer exists.
-extern int check_layer(char *id);
+extern int check_inode_layer(char *id);
 
 // Locate an inode given a path.  If 'follow' is specified, then search
 // all linked layers for the path.  Create one if 'create' flag is specified.

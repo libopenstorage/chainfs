@@ -1,8 +1,29 @@
-#ifdef EXPERIMENTAL_
 #ifndef _CHAINFS_H_
 #define _CHAINFS_H_
+
+typedef enum
+{
+	mode_chainfs,
+	mode_dummyfs	// For testing baseline performance.
+} chainfs_mode_t;
+
+// Create a layer and link it to a parent.  Parent can be "" or NULL.
+extern int create_layer(char *id, char *parent_id);
+
+// Remove a layer and all the inodes in this layer.
+extern int remove_layer(char *id);
+
+// Returns true if layer exists.
+extern int check_layer(char *id);
+
+// Allocate a chained FS starting from the given layer ID.
 extern int alloc_chainfs(char *id);
+
+// Release a chained FS.
 extern int release_chainfs(char *id);
-extern int start_chainfs(char *mount_path);
+
+// Start ChainFS.  mode_dummyfs is used only for performance testing
+// and will not work as a functional chained FS.
+extern int start_chainfs(chainfs_mode_t mode, char *mount_path);
+
 #endif // _CHAINFS_H_
-#endif // EXPERIMENTAL_

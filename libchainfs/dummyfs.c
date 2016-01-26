@@ -34,7 +34,7 @@
 #define MAX_LAYERS 64
 #define MAX_INSTANCES 128
 
-static char *dummy_src;
+char *dummy_src;
 
 struct dummy_dirp {
 	DIR *dp;
@@ -841,7 +841,7 @@ static int dummy_lock(const char *path, struct fuse_file_info *fi, int cmd,
 			sizeof(fi->lock_owner));
 }
 
-static struct fuse_operations dummy_oper = {
+struct fuse_operations dummy_oper = {
 	.getattr	= dummy_getattr,
 	.fgetattr	= dummy_fgetattr,
 	.access		= dummy_access,
@@ -879,63 +879,3 @@ static struct fuse_operations dummy_oper = {
 
 	.flag_nullpath_ok = 1,
 };
-
-int start_dummyfs(char *mount_path)
-{
-	char *argv[4];
-
-	dummy_src = strdup("/tmp/test");
-	if (!dummy_src) {
-		return -errno;
-	}
-
-	rmdir(dummy_src);
-	mkdir(dummy_src, 0644);
-
-	umask(0);
-
-	argv[0] = "dummy";
-	argv[1] = mount_path;
-	argv[2] = "-f";
-
-	return fuse_main(3, argv, &dummy_oper, NULL);
-}
-
-int create_layer(char *id)
-{  
-    char dir[4096];
-
-    sprintf(dir, "/tmp/test/%s", id);
-    mkdir(dir, 0644);
-
-    fprintf(stderr, "Created layer %s\n", dir);
-
-    return 0;
-}
-
-int remove_layer(char *id)
-{   
-    return 0;
-}  
-
-int check_layer(char *id)
-{
-    struct stat st;
-    char dir[4096];
-
-    sprintf(dir, "%s/%s", dummy_src, id);
-
-    int ret = stat(dir, &st);
-
-    return ret;
-}  
-
-int main()
-{
-	system("umount -l /var/lib/openstorage/chainfs");
-	system("mkdir -p /var/lib/openstorage/chainfs");
-
-	start_dummyfs("/var/lib/openstorage/chainfs");
-   
-	return 0;
-}

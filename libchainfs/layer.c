@@ -786,8 +786,15 @@ done:
 	return ret;
 }
 
+static int remove_inodes(struct layer *layer)
+{
+	// TODO
+
+	return 0;
+}
+
 // Create a layer and link it to a parent.  Parent can be "" or NULL.
-int create_layer(char *id, char *parent_id)
+int create_inode_layer(char *id, char *parent_id)
 {
 	struct layer *parent = NULL;
 	struct layer *layer = NULL;
@@ -867,19 +874,9 @@ done:
 	return ret;
 }
 
-static int remove_inodes(struct layer *layer)
-{
-	// TODO
-
-	return 0;
-}
-
-int remove_layer(char *id)
+int remove_inode_layer(char *id)
 {
 	int ret = 0;
-
-	return 0;
-
 	pthread_mutex_lock(&layer_lock);
 	{
 		struct layer *layer = ht_get(layer_hash, id);
@@ -913,7 +910,7 @@ int remove_layer(char *id)
 }
 
 // Returns true if layer exists.
-int check_layer(char *id)
+int check_inode_layer(char *id)
 {
 	bool ret = false;
 
