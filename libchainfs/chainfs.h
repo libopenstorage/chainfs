@@ -1,8 +1,8 @@
 #ifdef EXPERIMENTAL_
-#ifndef _UNIONFS_H_
-#define _UNIONFS_H_
-extern int alloc_unionfs(char *id);
-extern int release_unionfs(char *id);
-extern int start_unionfs(char *mount_path);
-#endif // _UNIONFS_H_
+#ifndef _CHAINFS_H_
+#define _CHAINFS_H_
+extern int alloc_chainfs(char *id);
+extern int release_chainfs(char *id);
+extern int start_chainfs(char *mount_path);
+#endif // _CHAINFS_H_
 #endif // EXPERIMENTAL_

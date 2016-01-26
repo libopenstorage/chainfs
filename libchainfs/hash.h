@@ -20,6 +20,7 @@ typedef struct hashtable_s hashtable_t;
 extern hashtable_t *ht_create(int size);
 extern void ht_set(hashtable_t *hashtable, char *key, void *value);
 extern void *ht_get(hashtable_t *hashtable, char *key);
+extern void ht_remove(hashtable_t *hashtable, char *key);
 
 #endif	// _HASH_H_
 
