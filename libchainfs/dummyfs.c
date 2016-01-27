@@ -28,7 +28,6 @@
 
 #include "hash.h"
 
-#define MAX_DESC 4*1024
 #define MAX_LAYERS 64
 #define MAX_INSTANCES 128
 
@@ -43,12 +42,6 @@ static char *dummy_src;
 static pthread_mutex_t ufs_lock;
 static struct dummy ufs_instances[MAX_INSTANCES];
 static hashtable_t *ufs_hash;
-
-struct descriptor 
-{
-	char name[PATH_MAX];
-	int fd;
-} descriptors[MAX_DESC];
 
 struct dummy_dirp 
 {
@@ -108,45 +101,6 @@ done:
 	}
 
 	return ufs;
-}
-
-static void descriptors_init() 
-{
-	int i;
-	for (i=0; i<MAX_DESC; ++i) {
-		descriptors[i].fd = -1;
-		descriptors[i].name[0] = 0;
-	}
-}
-
-static int find_descriptor(const char* path) 
-{
-	int i;
-
-	return -1;
-
-	for (i=0; i<MAX_DESC; ++i) {
-		if(!strcmp(descriptors[i].name, path)) {
-			return descriptors[i].fd;
-		}
-	}
-	return -1;
-}
-
-static int register_fd(const char* path, int fd) 
-{
-	int i;
-
-	return fd;
-
-	for (i=0; i < MAX_DESC; ++i) {
-		if(descriptors[i].fd == -1) {
-			descriptors[i].fd = fd;
-			snprintf(descriptors[i].name, PATH_MAX, "%s", path);
-			return fd;
-		}
-	}
-	return -1;
 }
 
 static char *real_path(const char *path, bool create_mode)
@@ -255,11 +209,9 @@ static void free_path(char *path)
 	free(path);
 }
 
-// Find a file in the FD cache.
-static int maybe_open(const char* path, int flags, int mode) 
+static int real_open(const char* path, int flags, int mode) 
 {
 	int fd = -1;
-	int ret;
 	char *rp = NULL;
 
 	rp = real_path(path, (flags & O_CREAT ? true : false));
@@ -267,30 +219,17 @@ static int maybe_open(const char* path, int flags, int mode)
 		goto done;
 	}
 
-	fd = find_descriptor(rp);
-	if (fd != -1) {
-		goto done;
-	}
-
 	int fixed_flags = (flags & (~O_WRONLY) & (~O_RDONLY)) | O_RDWR;
 
 	fd = open(rp, fixed_flags, mode);
-	if (fd==-1) {
+	if (fd == -1) {
 		fd = open(rp, flags, mode);
 	}
 
-	if (fd==-1) {
+	if (fd == -1) {
 		if (flags & O_CREAT) {
 			fprintf(stderr, "Warning, failed to create %s (errno=%d)\n", rp, errno);
 		}
-		goto done;
-	}
-
-	ret = register_fd(rp, fd);
-	if (ret == -1)  {
-		fprintf(stderr, "Warning, error while registering FD for %s.\n", rp);
-		close(fd);
-		fd = -1;
 		goto done;
 	}
 
@@ -768,7 +707,7 @@ static int dummy_truncate(const char *path, off_t size)
 
 	trace(__func__, path);
 
-	int fd = maybe_open(path, O_RDWR, 0777);
+	int fd = real_open(path, O_RDWR, 0777);
 	if (fd == -1) {
 		errno = ENOENT;
 		res = -ENOENT;
@@ -829,7 +768,7 @@ static int dummy_open(const char *path, struct fuse_file_info *fi)
 
 	trace(__func__, path);
 
-	fd = maybe_open(path, fi->flags, 0777);
+	fd = real_open(path, fi->flags, 0777);
 	if (fd == -1) {
 		res = -errno;
 		goto done;
@@ -849,7 +788,7 @@ static int dummy_create(const char *path, mode_t mode, struct fuse_file_info *fi
 
 	trace(__func__, path);
 
-	fd = maybe_open(path, fi->flags, mode);
+	fd = real_open(path, fi->flags, mode);
 	if (fd == -1) {
 		res = -errno;
 		goto done;
@@ -1331,13 +1270,12 @@ int check_dummy_layer(char *id)
 
 int remove_dummy_layer(char *id)
 {
-    char dir[4096];
-    int ret = 0;
+    char cmd[4096];
 
-    sprintf(dir, "%s/%s", dummy_src, id);
-    ret = rmdir(dir);
+    sprintf(cmd, "rm -rf %s/%s", dummy_src, id);
+	system(cmd);
 
-    return ret;
+    return 0;
 }
 
 int init_dummy(char *src_path)
@@ -1365,8 +1303,6 @@ int init_dummy(char *src_path)
 	}
 
 	ufs_hash = ht_create( 65536 );
-
-	descriptors_init();
 
 	return 0;
 }
