@@ -957,6 +957,8 @@ static int dummy_fsync(const char *path, int isdatasync,
 	int res;
 	(void) path;
 
+	return 0;
+
 #ifndef HAVE_FDATASYNC
 	(void) isdatasync;
 #else

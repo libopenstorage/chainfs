@@ -929,3 +929,9 @@ int check_layer(char *id)
 
 	return ret;
 }
+
+int release_cache(void)
+{
+	system("free && sync && echo 3 > /proc/sys/vm/drop_caches && free");
+	return 0;
+}
